@@ -165,7 +165,7 @@ Provide the agent:
 | Verdict | Action |
 |---------|--------|
 | ✅ SAFE | Proceed to Step 3 |
-| ⚠️ REVIEW NEEDED | Present findings to user. Wait for explicit approval before proceeding. |
+| ⚠️ REVIEW NEEDED | Present findings to user. If the fix is clear and small (e.g. missing input validation), **offer to apply it yourself** and ask the user whether to fix-then-merge or bounce back to the author. Wait for explicit direction before touching local code. |
 | 🚫 BLOCK | Do not check out or run code. Report to user and stop. |
 
 ### Step 3: For each mergeable, security-cleared PR, launch two agents in parallel
@@ -310,6 +310,21 @@ gh pr comment <number> --body "..."
 | Future-proofing  | ...              | ...                |
 ```
 
+### Merging multiple PRs: rebase each one after the previous lands
+
+When merging more than one PR in sequence, the second PR's branch was based on the old main — not the main that includes the first PR's changes. After merging PR A, you must rebase PR B's branch before merging it:
+
+```bash
+git checkout pr-B-branch
+git rebase main          # rebase onto main that now includes PR A
+# resolve any conflicts
+npm run build            # or project equivalent — rebuild generated files
+git checkout main
+git merge --squash pr-B-branch
+```
+
+Conflicts from sequential merges are almost always in **generated files** (bundled dist, lock files, source maps). Resolve them by accepting the current main's version and rebuilding — never try to hand-merge a minified bundle.
+
 ### Step 4: Merge and thank the author
 
 ```bash
@@ -328,13 +343,17 @@ gh pr comment NUMBER --repo OWNER/REPO --body "Thanks @author! [1-2 sentence sum
 **Identification format:** Always include:
 - Model name (e.g., `Claude Opus 4.6`)
 - Harness + version (e.g., `Claude Code 2.1.56`)
-- Session ID (from `$CLAUDE_SESSION_ID`)
+- Session ID (if available)
 
 To get version and session:
 ```bash
 claude --version       # e.g., "2.1.56 (Claude Code)"
-echo $CLAUDE_SESSION_ID
+
+# Session ID is passed as --session-id to the Claude process; read it from the parent:
+ps -p $PPID -o args= | grep -oE -- '--session-id [^ ]+' | awk '{print $2}'
 ```
+
+`$CLAUDE_SESSION_ID` is not reliably set as an environment variable. Use the `ps` command above instead. If it returns empty (Claude was launched without an explicit session ID), omit the session ID from the comment rather than leaving a blank placeholder.
 
 ---
 
@@ -355,10 +374,11 @@ echo $CLAUDE_SESSION_ID
 | Merging conflicting PRs | Check `mergeStateStatus` — never merge `DIRTY` |
 | Missing identification in PR comments | Always include model, Claude Code version, session ID |
 | Reviewing PRs sequentially | Launch code review and test agents in parallel |
-| Thanking with wrong session ID | Get it from `$CLAUDE_SESSION_ID` at time of comment |
+| Thanking with wrong session ID | Get it via `ps -p $PPID -o args= \| grep -oE -- '--session-id [^ ]+' \| awk '{print $2}'`; omit if empty |
 | Requesting changes for missing tests only | Write the tests yourself on the PR branch and push them |
 | Leaving an architectural alternative as a comment only | Build a prototype branch, run tests, push it, then comment with branch link + tradeoff table |
 | Blocking a PR on an architectural discussion | Prototype discussions are non-blocking; PR proceeds to normal merge decision |
 | Pushing lint fixes to a fork PR branch | You can't — detect with `headRepositoryOwner`, then use manual squash pattern |
+| Merging second PR without rebasing after first landed | Always rebase each PR branch onto current main before merging; conflicts will be in generated files — resolve by rebuilding |
 | Merging a PR that adds a function never called | Grep for callers; if none exist outside the file, wire it up before merging |
 | Duplicating work from a stale PR | Run lint/tests on main first to see what's actually still outstanding |
