@@ -203,6 +203,37 @@ Provide the agent:
 > **MANDATORY: Never merge autonomously.**
 > After code review and tests complete — even when all checks are green — Claude MUST stop and present findings to the user. State the PR number, the code review verdict, and the test results. Then ask explicitly: **"Shall I merge PR #N?"** Wait for an affirmative reply ("yes", "go ahead", "merge it", etc.) before running any merge command. This rule applies unconditionally, regardless of how clear-cut the result appears.
 
+### Fork branch limitation: manual squash when you can't push to the author's branch
+
+When a PR comes from a fork (i.e., `gh pr view N --json headRepositoryOwner` returns someone other than the repo owner), you cannot push lint fixes or other improvements to the PR branch.
+
+**Instead of `gh pr merge --squash`** (which would merge the PR as-is without your fixes), do a manual squash:
+
+```bash
+# 1. Confirm it's a fork
+gh pr view N --repo OWNER/REPO --json headRepositoryOwner -q '.headRepositoryOwner.login'
+
+# 2. Fetch the PR branch locally
+git fetch origin pull/N/head:pr-N
+
+# 3. Pull all changed files onto main
+git checkout main
+git checkout pr-N -- file1.go file2.go ...   # only the files changed by the PR
+
+# 4. Apply any fixes you need (lint, etc.)
+
+# 5. Commit as a squash (summarize all PR changes in one message)
+git commit -m "fix: ... (#N)\n\nCo-authored-by: Author <Author@users.noreply.github.com>"
+
+# 6. Push
+git push origin main
+
+# 7. Close the PR manually with a comment explaining what you did
+gh pr close N --repo OWNER/REPO --comment "Merged manually as squash commit <SHA> with <fix applied on top>. ..."
+```
+
+**Co-author attribution:** Always include the PR author in the commit via `Co-authored-by:` so their contribution appears in the repo's contributor graph.
+
 ### Missing test coverage: write the tests yourself
 
 When code review identifies that new code lacks test coverage (e.g. a new function has no unit tests), do not just request changes from the author. Instead:
@@ -212,6 +243,20 @@ When code review identifies that new code lacks test coverage (e.g. a new functi
 3. Proceed to the merge decision as normal
 
 Only request changes from the author if the code itself has correctness issues, not just missing tests. Missing tests are your problem to fix, not a reason to block the PR.
+
+### New function added by a PR? Verify the call site exists
+
+When a PR adds a new function that's supposed to fire at runtime (a warning, a hook, a side effect), grep for callers across the codebase before merging. It's easy to add the function and forget to wire it up.
+
+```bash
+grep -rn "functionName" pkg/ cmd/ --include="*.go"
+```
+
+If the function is defined but never called outside its own file, flag it and wire it in yourself before merging.
+
+### Superseded PR check: run lint/tests on main before stealing code
+
+Before extracting fixes from a stale PR, run `make lint` and `make test` on main first. Many fixes may already be on main from earlier work. This avoids duplicating effort and tells you exactly what's still outstanding.
 
 ### Architectural alternatives: prototype before commenting
 
@@ -314,3 +359,6 @@ echo $CLAUDE_SESSION_ID
 | Requesting changes for missing tests only | Write the tests yourself on the PR branch and push them |
 | Leaving an architectural alternative as a comment only | Build a prototype branch, run tests, push it, then comment with branch link + tradeoff table |
 | Blocking a PR on an architectural discussion | Prototype discussions are non-blocking; PR proceeds to normal merge decision |
+| Pushing lint fixes to a fork PR branch | You can't — detect with `headRepositoryOwner`, then use manual squash pattern |
+| Merging a PR that adds a function never called | Grep for callers; if none exist outside the file, wire it up before merging |
+| Duplicating work from a stale PR | Run lint/tests on main first to see what's actually still outstanding |
