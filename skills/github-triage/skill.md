@@ -192,13 +192,16 @@ Provide the agent:
 
 | Code Review | Tests | Action |
 |-------------|-------|--------|
-| Approve | Pass | Merge |
-| Approve-with-notes | Pass | Merge, note in comment |
-| Approve | Fail (pre-existing only) | Merge, note pre-existing failures |
+| Approve | Pass | **Present findings to user. Ask: "Shall I merge?"** |
+| Approve-with-notes | Pass | **Present findings + notes to user. Ask: "Shall I merge?"** |
+| Approve | Fail (pre-existing only) | **Present findings to user, note pre-existing failures. Ask: "Shall I merge?"** |
 | Approve | Fail (new failures) | Do not merge, report to user |
 | Request changes | Any | Do not merge, report to user |
 
 **Conflicts:** If `mergeStateStatus` is `DIRTY`, do not merge. Report to user with description of what conflicts.
+
+> **MANDATORY: Never merge autonomously.**
+> After code review and tests complete — even when all checks are green — Claude MUST stop and present findings to the user. State the PR number, the code review verdict, and the test results. Then ask explicitly: **"Shall I merge PR #N?"** Wait for an affirmative reply ("yes", "go ahead", "merge it", etc.) before running any merge command. This rule applies unconditionally, regardless of how clear-cut the result appears.
 
 ### Step 4: Merge and thank the author
 
@@ -241,6 +244,7 @@ echo $CLAUDE_SESSION_ID
 | Closing an issue based on partial evidence | Grep for specific function/struct names, don't guess |
 | Checking out PR code before security review | Always run pr-security-review agent first — it has read-only tools for safety |
 | Merging without testing | Always run code review + test agents in parallel first |
+| **Merging without user confirmation** | **NEVER merge autonomously. Always present findings and ask "Shall I merge PR #N?" — wait for an explicit yes before running any merge command, even when all checks are green** |
 | Merging conflicting PRs | Check `mergeStateStatus` — never merge `DIRTY` |
 | Missing identification in PR comments | Always include model, Claude Code version, session ID |
 | Reviewing PRs sequentially | Launch code review and test agents in parallel |
