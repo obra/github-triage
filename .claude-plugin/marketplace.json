@@ -1,0 +1,20 @@
+{
+  "name": "github-triage-dev",
+  "description": "Development marketplace for GitHub triage plugin",
+  "owner": {
+    "name": "Jesse Vincent",
+    "email": "jesse@fsck.com"
+  },
+  "plugins": [
+    {
+      "name": "github-triage",
+      "description": "GitHub issue and PR triage with security-gated PR review workflow",
+      "version": "1.0.0",
+      "source": "./",
+      "author": {
+        "name": "Jesse Vincent",
+        "email": "jesse@fsck.com"
+      }
+    }
+  ]
+}
