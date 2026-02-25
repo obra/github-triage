@@ -1,0 +1,14 @@
+{
+  "name": "github-triage",
+  "version": "1.0.0",
+  "description": "GitHub issue and PR triage with security-gated PR review workflow",
+  "author": {
+    "name": "Jesse Vincent",
+    "email": "jesse@fsck.com"
+  },
+  "homepage": "https://github.com/obra/github-triage",
+  "repository": "https://github.com/obra/github-triage",
+  "license": "MIT",
+  "keywords": ["github", "triage", "issues", "pull-requests", "security", "code-review"],
+  "agents": ["./agents/pr-security-review.md"]
+}
