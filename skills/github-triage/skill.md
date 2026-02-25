@@ -203,6 +203,68 @@ Provide the agent:
 > **MANDATORY: Never merge autonomously.**
 > After code review and tests complete — even when all checks are green — Claude MUST stop and present findings to the user. State the PR number, the code review verdict, and the test results. Then ask explicitly: **"Shall I merge PR #N?"** Wait for an affirmative reply ("yes", "go ahead", "merge it", etc.) before running any merge command. This rule applies unconditionally, regardless of how clear-cut the result appears.
 
+### Missing test coverage: write the tests yourself
+
+When code review identifies that new code lacks test coverage (e.g. a new function has no unit tests), do not just request changes from the author. Instead:
+
+1. Write the tests yourself on the PR branch
+2. Push them to the PR branch with a commit message explaining what you added and why
+3. Proceed to the merge decision as normal
+
+Only request changes from the author if the code itself has correctness issues, not just missing tests. Missing tests are your problem to fix, not a reason to block the PR.
+
+### Architectural alternatives: prototype before commenting
+
+When you have a meaningful architectural concern or an alternative approach worth considering:
+
+- Do not leave a review comment that only describes the idea in words
+- Actually prototype it: create a branch off the PR branch, implement the alternative, write tests, verify they pass
+- Push the prototype branch
+- Leave a PR comment that includes:
+  - A link to the prototype branch
+  - A tradeoff table comparing both approaches (e.g. mount count, complexity, scope, future-proofing)
+  - An explicit invitation to discuss
+
+Do NOT block the PR on an architectural alternative. It is a discussion, not a blocker. The original PR proceeds to the normal merge decision independently.
+
+### The prototype branch pattern
+
+```bash
+# 1. Get onto the PR branch
+gh pr checkout <number>
+
+# 2. Branch off it
+git checkout -b prototype/<short-description>
+
+# 3. Implement the alternative approach
+
+# 4. Run the full test suite — it must pass before you push
+make test   # or project equivalent
+
+# 5. Commit with a clear message explaining the approach
+git commit -m "prototype: <description of alternative approach>"
+
+# 6. Push the prototype branch
+git push origin prototype/<short-description>
+
+# 7. Return to main
+git checkout main
+
+# 8. Leave a comment on the PR with the branch link and tradeoff comparison
+gh pr comment <number> --body "..."
+```
+
+**Tradeoff table format:**
+
+```
+| Dimension        | Current approach | Prototype approach |
+|------------------|------------------|--------------------|
+| Mount count      | ...              | ...                |
+| Complexity       | ...              | ...                |
+| Scope of change  | ...              | ...                |
+| Future-proofing  | ...              | ...                |
+```
+
 ### Step 4: Merge and thank the author
 
 ```bash
@@ -249,3 +311,6 @@ echo $CLAUDE_SESSION_ID
 | Missing identification in PR comments | Always include model, Claude Code version, session ID |
 | Reviewing PRs sequentially | Launch code review and test agents in parallel |
 | Thanking with wrong session ID | Get it from `$CLAUDE_SESSION_ID` at time of comment |
+| Requesting changes for missing tests only | Write the tests yourself on the PR branch and push them |
+| Leaving an architectural alternative as a comment only | Build a prototype branch, run tests, push it, then comment with branch link + tradeoff table |
+| Blocking a PR on an architectural discussion | Prototype discussions are non-blocking; PR proceeds to normal merge decision |
