@@ -37,6 +37,8 @@ gh label list --repo OWNER/REPO --json name,description,color --limit 100
 - Severity signals (crash, security, data loss, cosmetic)
 - Status signals (stale, waiting for response, needs reproduction)
 - Quality signals (missing reproduction steps, vague descriptions, no version info, no error output)
+- Authorship signals (AI-generated with no human oversight — see below)
+- Template compliance (if repo has issue/PR templates — see below)
 - Root cause signals (upstream dependency bug, user environment, plugin bug)
 
 ## Phase 2: Propose Taxonomy
@@ -53,6 +55,7 @@ Dimension: type     → bug, enhancement, documentation
 Dimension: area     → area:docker, area:devcontainer-spec, area:testing, area:tooling
 Dimension: priority → priority:high (bugs that block users)
 Dimension: status   → status:needs-review, status:needs-reproduction, status:blocked, status:stale
+Dimension: quality  → no-obvious-human-review, pr-template-rules-ignored (if repo has templates)
 
 | #   | Title                        | Labels                          |
 |-----|------------------------------|---------------------------------|
@@ -88,6 +91,25 @@ gh pr edit NUMBER --repo OWNER/REPO --add-label "label1,label2"
 **Confidence rule:** Apply `needs-categorization` when uncertain. A wrong label is worse.
 
 **Reproduction rule:** Apply `needs-reproduction` to bug reports that lack clear steps to reproduce, have vague descriptions ("it doesn't work"), are missing version/environment info, or don't include error output. A bug that can't be reproduced can't be fixed.
+
+**AI authorship rule:** Apply `no-obvious-human-review` (or repo equivalent) to issues and PRs that appear fully AI-generated with no meaningful human oversight. Signals to look for:
+
+- "Generated with [tool]" tags with no additional human context
+- Formulaic structure (Problem/Solution/Changes with bullet-by-bullet enumeration)
+- Grandiose scope or claims disproportionate to the actual change
+- Leaked IDE artifacts (VS Code `cci:` URIs, session URLs, local file paths)
+- Checkmark-emoji "testing" claims with no real evidence
+- Body reads like an LLM completing a prompt (overly thorough, perfectly structured, no human voice)
+- Submitting personal/project-specific config as upstream changes
+- "See issue → generate fix → submit PR" pattern with no evidence of understanding
+
+Not all AI-assisted PRs warrant this label. Exclude submissions that show:
+- First-person voice with genuine observations ("While working on X, I noticed...")
+- Real evaluation evidence (before/after comparisons, specific failure modes discovered)
+- Honest limitations ("Not yet tested on...", "Known issue: ...")
+- Iterative development ("I tried X but it didn't work, so I switched to Y")
+
+**Template compliance rule:** If the repo has issue or PR templates, check whether submissions filed after the template was introduced actually use it. Apply `pr-template-rules-ignored` (or repo equivalent) to PRs that either skip the template entirely or leave required sections blank/placeholder. This is an objective, mechanical check — apply it consistently regardless of content quality. A PR can have good content and still get this label if it ignored the template. To determine when templates were introduced, check `git log` for the template files (e.g., `.github/PULL_REQUEST_TEMPLATE.md`).
 
 **Skip closed issues** unless explicitly asked.
 
@@ -385,3 +407,6 @@ ps -p $PPID -o args= | grep -oE -- '--session-id [^ ]+' | awk '{print $2}'
 | Merging second PR without rebasing after first landed | Always rebase each PR branch onto current main before merging; conflicts will be in generated files — resolve by rebuilding |
 | Merging a PR that adds a function never called | Grep for callers; if none exist outside the file, wire it up before merging |
 | Duplicating work from a stale PR | Run lint/tests on main first to see what's actually still outstanding |
+| Labeling all AI-assisted PRs as no-human-review | Only flag submissions with NO evidence of human involvement; AI-assisted PRs with real evaluation, honest limitations, or human voice are fine |
+| Skipping template compliance check | If repo has templates, check `git log` for when they were added; tag all post-template PRs that ignored them, regardless of content quality |
+| Guessing when templates were introduced | Always verify with `git log -- .github/PULL_REQUEST_TEMPLATE.md` (or equivalent path) |
