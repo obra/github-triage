@@ -36,6 +36,7 @@ gh label list --repo OWNER/REPO --json name,description,color --limit 100
 - Type signals (bug templates, "how do I", "feature request", error logs)
 - Severity signals (crash, security, data loss, cosmetic)
 - Status signals (stale, waiting for response, needs reproduction)
+- Quality signals (missing reproduction steps, vague descriptions, no version info, no error output)
 - Root cause signals (upstream dependency bug, user environment, plugin bug)
 
 ## Phase 2: Propose Taxonomy
@@ -51,7 +52,7 @@ Present discovered dimensions and proposed label values. Match existing label st
 Dimension: type     → bug, enhancement, documentation
 Dimension: area     → area:docker, area:devcontainer-spec, area:testing, area:tooling
 Dimension: priority → priority:high (bugs that block users)
-Dimension: status   → status:needs-review, status:blocked, status:stale
+Dimension: status   → status:needs-review, status:needs-reproduction, status:blocked, status:stale
 
 | #   | Title                        | Labels                          |
 |-----|------------------------------|---------------------------------|
@@ -85,6 +86,8 @@ gh pr edit NUMBER --repo OWNER/REPO --add-label "label1,label2"
 ```
 
 **Confidence rule:** Apply `needs-categorization` when uncertain. A wrong label is worse.
+
+**Reproduction rule:** Apply `needs-reproduction` to bug reports that lack clear steps to reproduce, have vague descriptions ("it doesn't work"), are missing version/environment info, or don't include error output. A bug that can't be reproduced can't be fixed.
 
 **Skip closed issues** unless explicitly asked.
 
