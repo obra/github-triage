@@ -13,9 +13,15 @@ Systematically categorize, validate, and act on open GitHub issues and PRs.
 
 ```
 1. Label all issues and PRs (Phases 1-5)
-2. Validate open issues against codebase (Phase 6)
+2. Test whether open issues are still reproducible (Phase 6)
 3. Review and merge open PRs (Phase 7)
 ```
+
+**Foundational framing — bug reports are not product defects.** A bug report is a *report of a possible problem* by a *reporter who is an unreliable narrator*. It is not the same thing as a defect in the product. Reporters misdiagnose root causes. They attribute symptoms to the wrong code. They describe environment-specific behavior as universal. They confuse correlation with causation. They make claims that turn out not to be reproducible at all.
+
+When you triage an issue, your job is **not** to verify the reporter's story. Your job is to determine whether the *behavior* they describe still occurs. The file the reporter pointed at being unchanged tells you nothing — they may have pointed at the wrong file, or the behavior may have a different cause, or the behavior may not exist anymore (or ever).
+
+Treat every bug report as a hypothesis to be tested by reproduction, not a fact to be verified by inspection.
 
 ---
 
@@ -130,9 +136,9 @@ Tagged: 16 issues, 6 PRs
 
 ---
 
-## Phase 6: Validate Open Issues Against Codebase
+## Phase 6: Test Whether Open Issues Are Still Reproducible
 
-Go through open issues **oldest-first** and check whether each has been resolved in the current codebase. Close resolved ones with a comment.
+Go through open issues **oldest-first**. For each one, the question to answer is: **"can this still be reproduced?"** — not "is the file content the reporter described still there?"
 
 ```bash
 # Get issues sorted oldest-first
@@ -140,29 +146,83 @@ gh issue list --repo OWNER/REPO --state open --json number,title,body,createdAt 
   | python3 -c "import json,sys; issues=sorted(json.load(sys.stdin), key=lambda x: x['number']); ..."
 ```
 
-**Validation approach:**
-- Search the codebase for the feature/fix described in the issue
-- For features: look for the key function names, config fields, or struct fields mentioned
-- For bugs: look for the specific error message, code path, or fix in git log
-- Use parallel searches across multiple issues for speed
+### The reproduction-vs-narration distinction
 
-**Key searches to run in parallel:**
+This is the most common mistake in issue triage and the one that produces the most false-positive "still valid" verdicts.
+
+| Wrong question | Right question |
+|----------------|----------------|
+| "Does the file the reporter pointed at still say what they said it said?" | "If I follow the reporter's steps, does the claimed behavior happen?" |
+| "Did we ship a fix for this?" | "Can I still reproduce the bug?" |
+| "Does the feature exist in the codebase?" | "Does the actual user need described in the report still go unmet?" |
+
+These are not equivalent. The reporter's narration is a *theory* about the bug. The bug itself is the behavior. Verify the behavior, not the theory.
+
+### Reproduction approach by claim type
+
+**Deterministic claims (shell scripts, hooks, plugin manifests, config files):**
+- Construct the failure scenario (the inputs / environment described)
+- Run the affected code path directly
+- Observe whether the claimed failure occurs
+- This is the only category where you can confidently reproduce locally without a harness
+
+**LLM-steering claims (e.g., "this skill text causes the model to do X"):**
+- File inspection alone is insufficient — text being present ≠ model misbehaving
+- Run a real session that exercises the trigger described
+- If the behavior reproduces, the bug is real even if the reporter misidentified the cause
+- If it doesn't reproduce, mark NOT REPRODUCIBLE — do not just trust the reporter's diagnosis
+
+**Multi-step session/agent claims (e.g., "agent stops at task 5", "subagent skips review"):**
+- Always reproduction-required — these depend on runtime state
+- If you don't have the harness or time to run a session, mark UNCERTAIN
+
+**Harness-specific claims (Windows hook fails, Codex token usage, Cursor crashes):**
+- Reproduction needs the named harness/OS
+- If unavailable, mark UNCERTAIN and apply a `needs-repro-on-<harness>` label
+- Do NOT mark VALID based on file inspection alone — the bug may not exist; the reporter may have misdiagnosed an environment issue
+
+**Feature-request claims:**
+- Different test: "is this user need still unmet?"
+- A request can be valid even if related feature exists — make sure the *request* is what's missing, not just the keyword
+- A request can be invalid if the named feature has been added under a different name
+
+### Verdict taxonomy
+
+For each issue, one of:
+
+| Verdict | Meaning | Action |
+|---------|---------|--------|
+| **REPRODUCED** | Followed steps, observed the behavior | Keep open; consider priority labels |
+| **NOT REPRODUCIBLE** | Followed steps, behavior didn't occur. Reporter was wrong, or bug has been fixed in a way that file inspection wouldn't show | Close with reproduction notes |
+| **NEED-REPRO-ENV** | Can't reproduce in this environment (Windows-only, Codex-only, etc.) | Keep open; tag with `needs-repro-on-<harness>` |
+| **NEED-MORE-INFO** | Report lacks enough detail to attempt reproduction | Comment asking for repro steps; tag `needs-reproduction` |
+| **NOT-A-DEFECT** | RFC, feature request, philosophical discussion, or duplicate | Keep open or close per project policy |
+
+### When closing a NOT REPRODUCIBLE issue
+
 ```bash
-grep -r "featureName\|FeatureName" /path/to/repo --include="*.go" -l
-git log --oneline | grep -i "keyword"
+gh issue close NUMBER --repo OWNER/REPO --comment "I tried to reproduce this following the steps in the report. [Specifics of what you did and what you observed.] The behavior described doesn't occur in [version/environment tested]. Closing — please reopen with fresh repro steps if you can still hit this. — Claude [model], Claude Code [version], session [session-id]"
 ```
 
-**When closing a resolved issue:**
-```bash
-gh issue close NUMBER --repo OWNER/REPO --comment "Verified by Claude Code: [specific explanation of where/how it's implemented, with file paths and line numbers where helpful]. — Claude [model], Claude Code [version], session [session-id]"
-```
+The close comment must describe **what you actually did** to test, not just "we couldn't repro." Naming your test gives the reporter the chance to push back if you tested wrong.
 
-**Leave open if:**
-- Feature is genuinely not implemented (grep finds nothing)
-- Bug has no associated fix in git log or code
-- Issue is a discussion/vision item that's ongoing
+### Tempting shortcuts that produce wrong verdicts
 
-**Be precise:** Cite specific files, function names, or commits when closing. Don't close based on a vague sense that "it seems implemented."
+These are mistakes Claude has made before — do not repeat them:
+
+- **"The file the reporter cited still has the line they quoted, so the bug is still valid."** No — the line being there doesn't prove the bug. Run the scenario.
+- **"There's a commit on `dev` that mentions this issue number, so it's fixed."** Maybe. Verify the *behavior* is gone on dev, not just that a commit exists.
+- **"There's no skill called `<feature-name>`, so the feature request is still valid."** Maybe — but verify the *user need* is unmet, not just the keyword absent. A different skill may already cover it.
+- **"The grep returned 0 results, so it's not implemented."** Try synonyms; the implementer may have named it differently.
+- **"The reporter said it happens on Windows, I'm on Mac, so it's UNCERTAIN."** Sometimes true — but check if the claim is actually OS-specific or only described that way. A path-handling bug may reproduce anywhere.
+
+### When the dev branch matters
+
+If the project uses a dev/release branch model, distinguish:
+- **REPRODUCED-ON-RELEASED** — bug reproduces on the published version (`origin/main`, latest tag)
+- **NOT-REPRODUCIBLE-ON-DEV** — bug is gone on `origin/dev` but still on `main`
+
+For NOT-REPRODUCIBLE-ON-DEV, do NOT just close — confirm with the maintainer how they prefer to handle "fixed pending release" (label, milestone, or close-with-citation). This is a common false-close vector: closing based on a dev commit message when the user reading `main` still hits the bug.
 
 ---
 
@@ -393,6 +453,11 @@ ps -p $PPID -o args= | grep -oE -- '--session-id [^ ]+' | awk '{print $2}'
 | Applying labels with low confidence | Use `needs-categorization` instead |
 | Skipping taxonomy approval | Always get approval before tagging |
 | Closing an issue based on partial evidence | Grep for specific function/struct names, don't guess |
+| **Treating a bug report as a product defect** | Bug reports are *reports* by *unreliable narrators* — they may have misdiagnosed. Validate by reproducing the behavior, not by checking whether the file content the reporter described still exists |
+| Marking VALID because the cited line is unchanged | Existence of the code the reporter blamed ≠ existence of the bug. Run the scenario. The reporter may have pointed at the wrong file or misread the cause |
+| Closing because a dev-branch commit mentions the issue number | Verify the behavior is actually gone on that branch — commit messages can lie or refer to a different aspect of the same bug |
+| Marking feature-request VALID because keyword grep is empty | Search for synonyms; the feature may exist under a different name. Validate the user need is unmet, not just the keyword absent |
+| Treating a behavior claim as testable by file inspection | LLM-steering and multi-step-session claims need real reproduction. If you can't run the session, mark UNCERTAIN — don't trust narration as evidence |
 | Checking out PR code before security review | Always run pr-security-review agent first — it has read-only tools for safety |
 | Merging without testing | Always run code review + test agents in parallel first |
 | **Merging without user confirmation** | **NEVER merge autonomously. Always present findings and ask "Shall I merge PR #N?" — wait for an explicit yes before running any merge command, even when all checks are green** |
